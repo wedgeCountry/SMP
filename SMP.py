@@ -5,7 +5,7 @@ class SMP():
 
 ### this is a soft margin perceptron also supporting kernels
 
-	def __init__(self, max_it = 4400, kernel = 'inner', degree=3, disp=1):
+	def __init__(self, max_it = 4400, kernel = None, degree=3, disp=1):
 		self.max_it = max_it
 		self.disp = disp
 		if kernel == 'poly':
@@ -13,7 +13,7 @@ class SMP():
 		elif kernel == 'gaussian':
 			self.kernel = lambda x, y: np.exp(np.inner(x - y, x - y)/1)
 		else: # kernel == 'inner'
-			self.kernel = np.inner
+			self.kernel = None
 			
 	def train(self, X, y, C = 0.1):
 		self.fit(X, y, C)
@@ -21,12 +21,16 @@ class SMP():
 	def fit(self, X, y, C = 0.1, lam = 1, sC = 0.1, mu = 0.1, learning_rate = 0.02):
 		
 		# coefficients
-		alpha = np.zeros(np.shape(X)[0])
+		if self.kernel:
+			alpha = np.zeros(np.shape(X)[0])
+		else:
+			alpha = np.zeros(np.shape(X)[1])
 		b = 0.0
 		xi = np.zeros(np.shape(X)[0])
 		
 		# build kernel matrix
-		K = np.asarray( self.kernel(X, X) )
+		if self.kernel:
+			K = np.asarray( self.kernel(X, X) )
 		
 		# index fields
 		indices = [i for i in range(len(y))]
@@ -46,13 +50,19 @@ class SMP():
 				update = 0. if xi[i] >= 0 else mu
 				
 				# misclassification
-				if 1 - xi[i] - y[i] * (np.inner(y*alpha,K[:, i]) + b) >= 0 :
+				if self.kernel and 1 - xi[i] - y[i] * (np.inner(y*alpha,K[:, i]) + b) >= 0 :
 					loop = True
 					update += lam
 					alpha[i] += learning_rate * lam
 					b += learning_rate * lam*y[i]
 					index_count[i] = 0	
-												
+				# misclassification
+				elif not self.kernel and 1 - xi[i] - y[i] * (np.inner(alpha,X[i, :]) + b) >= 0 :
+					loop = True
+					update += lam
+					alpha += learning_rate * lam * y[i] * X[i,:]
+					b += learning_rate * lam*y[i]
+					index_count[i] = 0									
 				# correct classification 
 				else:
 					index_count[i] += 1
@@ -81,9 +91,12 @@ class SMP():
 	# get posterior probability for a single samples mainly	
 	def classify(self, z):
 		z = np.asarray(z)
-		K = np.asarray( map(lambda x: self.kernel(x, z), self.X) )
-		return np.dot(self.y*self.alpha, K) + self.b
-
+		if self.kernel:
+			K = np.asarray( map(lambda x: self.kernel(x, z), self.X) )
+			return np.dot(self.y*self.alpha, K) + self.b
+		else:
+			return np.inner(self.alpha, z) + self.b
+			
 	# classify for lists of samples
 	def predict(self, grid): 
 		t = []
